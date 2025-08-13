@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-Atlas – Bluecompany (BC) • Streamlit Prototype v1 (Okiar)
+Atlas – Bluecompany (Glovis) • Streamlit Prototype v1 (Okiar)
 Como rodar:
     streamlit run app.py
 Observações:
 - Dados 100% simulados (mock). Estrutura pronta p/ plugar dados reais depois.
-- BUs e concorrentes baseados na proposta da BC (#9794).
-- Abas: Overview, Market (Share & Sizing), Concorrência, Tendências.
+- BUs e concorrentes baseados na proposta da Glovis (#9794).
+- Abas: Overview, Market (Share & Sizing), Concorrência, Tendências, AI.
 """
 
 import math
@@ -17,15 +17,24 @@ from typing import List, Dict, Tuple
 
 import numpy as np
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
+
+# Plotly (auto-install se faltar)
+try:
+    import plotly.express as px
+    import plotly.graph_objects as go
+except Exception:
+    import sys, subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "plotly>=5.22.0"])
+    import plotly.express as px
+    import plotly.graph_objects as go
+
 import streamlit as st
 
 # =============================================================================
 # CONFIGURAÇÃO GERAL
 # =============================================================================
 st.set_page_config(
-    page_title="Atlas – Bluecompany (BC)",
+    page_title="Atlas – Bluecompany (Glovis)",
     page_icon="🚚",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -78,7 +87,6 @@ CUSTOM_CSS = f"""
 /* Expander */
 details > summary {{ cursor: pointer; }}
 """
-
 st.markdown(f"<style>{CUSTOM_CSS}</style>", unsafe_allow_html=True)
 
 # =============================================================================
@@ -88,12 +96,12 @@ SEED = 123
 random.seed(SEED)
 np.random.seed(SEED)
 
-COMPANY = "Bluecompany"  # codinome p/ BC neste app
-# Concorrentes citados/relacionados na proposta
+COMPANY = "Bluecompany"  # codinome p/ Glovis neste app
+# Concorrentes relacionados
 COMPETITORS = ["Tegma", "JSL", "CEVA", "Autoport", "Transauto"]
 PLAYERS = [COMPANY] + COMPETITORS
 
-# Business Units (BUs) da proposta
+# Business Units (BUs)
 BUS = [
     "Milk Run",
     "Distribuição de Peças",
@@ -129,20 +137,17 @@ def ensure_datetime(df: pd.DataFrame, col: str) -> pd.DataFrame:
 def gen_market_share_series(players: List[str], months: List[date], bus: List[str]) -> pd.DataFrame:
     """Séries mensais de market share por BU e player."""
     rows = []
-    # peso base por BU e player
     base_by_bu = {b: {p: random.uniform(5, 35) for p in players} for b in bus}
     for b in bus:
-        base_by_bu[b][COMPANY] = random.uniform(18, 30)  # leve vantagem à Bluecompany
+        base_by_bu[b][COMPANY] = random.uniform(18, 30)
     for m in months:
         for b in bus:
-            # ruido mensal por player
             noise = {p: np.clip(np.random.normal(0, 1.2), -3, 3) for p in players}
             total = sum(base_by_bu[b][p] + noise[p] for p in players)
             for p in players:
                 share = max(0.01, (base_by_bu[b][p] + noise[p]) / max(total, 1e-9))
                 rows.append({"mes": m, "bu": b, "player": p, "market_share": share})
     df = pd.DataFrame(rows)
-    # normaliza por mês+BU
     df["sum_mb"] = df.groupby(["mes", "bu"])["market_share"].transform("sum")
     df["market_share"] = df["market_share"] / df["sum_mb"]
     df.drop(columns=["sum_mb"], inplace=True)
@@ -151,25 +156,24 @@ def gen_market_share_series(players: List[str], months: List[date], bus: List[st
 def gen_market_sizing(bus: List[str], months: List[date]) -> pd.DataFrame:
     """Sizing mensal por BU (receita/volume total do mercado)."""
     rows = []
+    base_map = {
+        "Milk Run": 120,
+        "Distribuição de Peças": 160,
+        "Gerenciamento de Pátios": 90,
+        "Transporte de Veículos": 220,
+        "PDI": 70,
+        "PDS": 60,
+    }
     for m in months:
         for b in bus:
-            # base diferente por BU (ordens de grandeza distintas)
-            base = {
-                "Milk Run": 120,
-                "Distribuição de Peças": 160,
-                "Gerenciamento de Pátios": 90,
-                "Transporte de Veículos": 220,
-                "PDI": 70,
-                "PDS": 60,
-            }[b]
+            base = base_map[b]
             sazonal = 1 + 0.05*np.sin((m.timetuple().tm_yday/365)*2*math.pi)
             total = int(max(10, np.random.normal(base, base*0.12) * sazonal))
-            # supor unidade = milhões R$ (ou mil viagens), deixar genérico
             rows.append({"mes": m, "bu": b, "tamanho_mercado": total})
     return pd.DataFrame(rows)
 
 def gen_competitor_pricing(players: List[str], bus: List[str]) -> pd.DataFrame:
-    """Preço médio relativo por BU e player (índice Bluecompany=100 +- variações)."""
+    """Preço médio relativo por BU e player (índice Bluecompany=100 +- variações) + SLA/Leadtime."""
     rows = []
     base_preco_bu = {
         "Milk Run": 1000,
@@ -181,14 +185,10 @@ def gen_competitor_pricing(players: List[str], bus: List[str]) -> pd.DataFrame:
     }
     for b in bus:
         for p in players:
-            idx = 1.0
-            if p != COMPANY:
-                # simular política: alguns mais caros, outros agressivos
-                idx = np.clip(np.random.normal(1.02, 0.07), 0.88, 1.22)
+            idx = 1.0 if p==COMPANY else np.clip(np.random.normal(1.02, 0.07), 0.88, 1.22)
             preco_medio = base_preco_bu[b] * idx
-            # SLA/leadtime simulados (quanto menor melhor)
-            sla = np.clip(np.random.normal(0.93 if p==COMPANY else 0.9, 0.05), 0.7, 0.99)  # % SLAs cumpridos
-            lead = np.clip(np.random.normal(4.5 if p==COMPANY else 5.2, 1.1), 2.0, 9.0)    # dias
+            sla = np.clip(np.random.normal(0.93 if p==COMPANY else 0.9, 0.05), 0.7, 0.99)
+            lead = np.clip(np.random.normal(4.5 if p==COMPANY else 5.2, 1.1), 2.0, 9.0)
             rows.append({
                 "bu": b, "player": p,
                 "preco_medio": float(preco_medio),
@@ -216,7 +216,6 @@ def gen_coverage(players: List[str], bus: List[str], ufs: List[str]) -> pd.DataF
     rows = []
     for b in bus:
         for p in players:
-            # Bluecompany com cobertura um pouco maior
             prob = 0.70 if p==COMPANY else 0.55
             for uf in ufs:
                 pres = np.random.rand() < np.clip(np.random.normal(prob, 0.08), 0.25, 0.9)
@@ -227,7 +226,7 @@ def gen_events(players: List[str], months: List[date], bus: List[str]) -> pd.Dat
     """Eventos competitivos por BU."""
     tipos = ["Contrato", "Hub/Filial", "Parceria", "Aquisição/M&A", "Regulatório", "Campanha"]
     severidades = ["Baixo", "Médio", "Alto", "Crítico"]
-    weights = [5, 7, 4, 2]  # prob. para severidade
+    weights = [5, 7, 4, 2]
     rows = []
     for m in months:
         for _ in range(random.randint(2, 7)):
@@ -250,7 +249,7 @@ def gen_docs_inventory() -> pd.DataFrame:
         ("Desk – Concorrência (Tegma/JSL/CEVA)", "Concorrência", "PDF", "2025-07-29"),
         ("Relatório – Sizing por BU (Q2)", "Market", "XLSX", "2025-08-05"),
         ("Quali – Roteiro Stakeholders BU Pátios", "Concorrência", "DOCX", "2025-08-01"),
-        ("Proposta #9794 – BC (Jun/25)", "Overview", "PDF", "2025-06-30"),
+        ("Proposta #9794 – Glovis (Jun/25)", "Overview", "PDF", "2025-06-30"),
         ("Radar – Tendências Logísticas (Jul)", "Tendências", "PDF", "2025-07-31"),
     ]
     docs = [{"titulo": t, "aba": aba, "tipo": ext, "data": pd.to_datetime(dt)} for t, aba, ext, dt in bases]
@@ -371,14 +370,14 @@ df_events = ensure_datetime(df_events, "data")
 # =============================================================================
 # HEADER
 # =============================================================================
-st.title("Atlas – Bluecompany (BC)")
-st.caption("War Room de Inteligência: visão integrada de Share & Sizing, Concorrência e Tendências • Dados simulados")
+st.title("Atlas – Bluecompany (Glovis)")
+st.caption("War Room de Inteligência: visão integrada de Share & Sizing, Concorrência, Tendências e AI • Dados simulados")
 
 # =============================================================================
 # ABAS
 # =============================================================================
-tab_overview, tab_market, tab_comp, tab_trends = st.tabs([
-    "Overview", "Market (Share & Sizing)", "Concorrência (Diferenciais e Preços)", "Tendências"
+tab_overview, tab_market, tab_comp, tab_trends, tab_ai = st.tabs([
+    "Overview", "Market (Share & Sizing)", "Concorrência (Diferenciais e Preços)", "Tendências", "AI"
 ])
 
 # =============================================================================
@@ -387,42 +386,30 @@ tab_overview, tab_market, tab_comp, tab_trends = st.tabs([
 with tab_overview:
     st.subheader("Resumo Executivo – Bluecompany")
 
-    # KPIs (market share mês, cobertura, índice de preço, SLA)
-    # Market share último mês (agregado às BUs selecionadas)
+    # KPIs
     if not df_share_hist.empty:
         last_month = df_share_hist["mes"].max()
         prev_months = sorted(df_share_hist["mes"].unique())
         prev_month = prev_months[-2] if len(prev_months) >= 2 else prev_months[-1]
-
         ms_cur = df_share_hist[(df_share_hist["player"]==COMPANY) & (df_share_hist["mes"]==last_month)]["market_share"].mean()
         ms_prev = df_share_hist[(df_share_hist["player"]==COMPANY) & (df_share_hist["mes"]==prev_month)]["market_share"].mean()
         delta_ms = ((ms_cur - ms_prev)/max(ms_prev, 1e-9))*100 if ms_prev==ms_prev else 0.0
     else:
         ms_cur, delta_ms = np.nan, 0.0
 
-    # Cobertura por UF (BUs selecionadas)
     cov = df_cov[df_cov["player"]==COMPANY].groupby("uf")["presenca"].max().sum() if not df_cov.empty else 0
-
-    # Índice de preço relativo (Bluecompany=100 no base; consolidar média das BUs)
     idx_preco = df_pricing[df_pricing["player"]==COMPANY]["indice_preco"].mean() if not df_pricing.empty else np.nan
-
-    # SLA médio e leadtime
     sla = df_pricing[df_pricing["player"]==COMPANY]["sla_cumprimento"].mean() if not df_pricing.empty else np.nan
     lead = df_pricing[df_pricing["player"]==COMPANY]["leadtime_dias"].mean() if not df_pricing.empty else np.nan
 
     c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        metric_card("Market Share (mês)", pct(ms_cur), delta_ms)
-    with c2:
-        metric_card("Cobertura (UFs c/ presença)", f"{int(cov)}")
-    with c3:
-        metric_card("Índice de Preço (ref. BU)", f"{(idx_preco*100):.0f}%" if idx_preco==idx_preco else "–")
-    with c4:
-        metric_card("SLA médio • Leadtime", f"{pct(sla)} • {lead:.1f}d" if sla==sla and lead==lead else "–")
+    with c1: metric_card("Market Share (mês)", pct(ms_cur), delta_ms)
+    with c2: metric_card("Cobertura (UFs c/ presença)", f"{int(cov)}")
+    with c3: metric_card("Índice de Preço (ref. BU)", f"{(idx_preco*100):.0f}%" if idx_preco==idx_preco else "–")
+    with c4: metric_card("SLA médio • Leadtime", f"{pct(sla)} • {lead:.1f}d" if sla==sla and lead==lead else "–")
 
     st.divider()
 
-    # Share e Sizing (últimos meses)
     o1, o2 = st.columns((1,1))
     with o1:
         st.markdown("<div class='block-title'>Market share – histórico (BUs selecionadas)</div>", unsafe_allow_html=True)
@@ -436,7 +423,6 @@ with tab_overview:
         st.plotly_chart(fig_sz, use_container_width=True)
 
     st.divider()
-
     st.markdown("<div class='block-title'>Alertas Recentes</div>", unsafe_allow_html=True)
     evts = df_events.sort_values("data", ascending=False).head(6)
     if evts.empty:
@@ -444,10 +430,7 @@ with tab_overview:
     else:
         for _, r in evts.iterrows():
             nivel = "critico" if r["severidade"]=="Crítico" else ("alto" if r["severidade"]=="Alto" else "normal")
-            alert_box(
-                f"{r['tipo']} – {r['player']} / {r['bu']} ({r['data'].strftime('%d/%m/%Y')})",
-                r["descricao"], nivel=nivel
-            )
+            alert_box(f"{r['tipo']} – {r['player']} / {r['bu']} ({r['data'].strftime('%d/%m/%Y')})", r["descricao"], nivel=nivel)
 
     with st.expander("Inventário de estudos (últimos)"):
         st.dataframe(data["docs"].sort_values("data", ascending=False),
@@ -459,7 +442,6 @@ with tab_overview:
 with tab_market:
     st.subheader("Market – Share & Sizing")
 
-    # Seleção de BU focal para gráficos
     bu_focal = st.selectbox("Escolha uma BU para detalhar", options=bus_sel if bus_sel else BUS, index=0)
     df_share_bu = df_share_hist[df_share_hist["bu"]==bu_focal].copy()
     df_sizing_bu = df_sizing_hist[df_sizing_hist["bu"]==bu_focal].copy()
@@ -470,7 +452,6 @@ with tab_market:
         fig1 = line_pct(df_share_bu.groupby(["mes","player"], as_index=False)["market_share"].mean(),
                         x="mes", y="market_share", color="player", title="")
         st.plotly_chart(fig1, use_container_width=True)
-
     with m2:
         st.markdown(f"<div class='block-title'>Sizing (volume total/receita) – {bu_focal}</div>", unsafe_allow_html=True)
         fig2 = px.bar(df_sizing_bu, x="mes", y="tamanho_mercado", title="")
@@ -478,8 +459,6 @@ with tab_market:
         st.plotly_chart(fig2, use_container_width=True)
 
     st.divider()
-
-    # Share atual por BU (mês mais recente)
     if not df_share_hist.empty:
         lm = df_share_hist["mes"].max()
         cur_bu_share = (df_share_hist[df_share_hist["mes"]==lm]
@@ -491,8 +470,6 @@ with tab_market:
         st.info("Sem séries de share para os filtros atuais.")
 
     st.divider()
-
-    # Cobertura por UF (Bluecompany vs média concorrentes) – BUs selecionadas
     cov_blue = df_cov[df_cov["player"]==COMPANY].groupby("uf")["presenca"].max().reset_index(name="blue")
     cov_others = (df_cov[df_cov["player"]!=COMPANY]
                   .groupby(["uf"])["presenca"].mean().reset_index(name="concorrentes_media"))
@@ -504,7 +481,8 @@ with tab_market:
         st.markdown("<div class='block-title'>Cobertura por UF – Bluecompany</div>", unsafe_allow_html=True)
         fig4 = px.bar(cov_blue.sort_values("blue", ascending=True), x="blue", y="uf",
                       orientation="h", title="")
-        fig4.update_layout(height=360, margin=dict(l=10, r=10, t=40, b=10), yaxis=dict(categoryorder="array", categoryarray=cov_blue.sort_values("blue")["uf"].tolist()))
+        fig4.update_layout(height=360, margin=dict(l=10, r=10, t=40, b=10),
+                           yaxis=dict(categoryorder="array", categoryarray=cov_blue.sort_values("blue")["uf"].tolist()))
         st.plotly_chart(fig4, use_container_width=True)
     with m4:
         st.markdown("<div class='block-title'>Δ Cobertura vs concorrentes (média)</div>", unsafe_allow_html=True)
@@ -519,12 +497,10 @@ with tab_market:
 with tab_comp:
     st.subheader("Concorrência – Diferenciais e Preços")
 
-    # BU focal para comparação
     bu_comp = st.selectbox("BU para comparar", options=bus_sel if bus_sel else BUS, index=0, key="comp_bu")
     df_prc_bu = df_pricing[df_pricing["bu"]==bu_comp].copy()
     df_diff_bu = df_diffs[df_diffs["bu"]==bu_comp].copy()
 
-    # KPIs de preço e SLA por player (BU focal)
     c1, c2 = st.columns((1,1))
     with c1:
         figp = bars_num(df_prc_bu.sort_values("preco_medio"),
@@ -541,8 +517,6 @@ with tab_comp:
         st.plotly_chart(figsla, use_container_width=True)
 
     st.divider()
-
-    # Diferenciais (radar Bluecompany vs concorrente escolhido)
     concorrente = st.selectbox("Concorrente para comparar no radar", options=[p for p in players_sel if p!=COMPANY], index=0 if len(players_sel)>1 else 0)
     pilares = df_diff_bu["pilar"].unique().tolist()
 
@@ -565,8 +539,6 @@ with tab_comp:
     st.plotly_chart(radar, use_container_width=True)
 
     st.divider()
-
-    # Tabelas de apoio
     with st.expander("Tabela – Preços & SLAs (BU)"):
         st.dataframe(df_prc_bu.sort_values(["player"]), use_container_width=True, height=240)
     with st.expander("Tabela – Diferenciais (BU)"):
@@ -579,7 +551,6 @@ with tab_comp:
 with tab_trends:
     st.subheader("Tendências – Impacto & Maturidade")
 
-    # Temas inspirados na proposta: digitalização, ESG, telemetria/rastreabilidade, etc.
     temas = [
         "Telemetria & Rastreabilidade",
         "Automação de Pátios",
@@ -601,7 +572,6 @@ with tab_trends:
                            xaxis_title="Maturidade", yaxis_title="Impacto esperado")
         st.plotly_chart(figt, use_container_width=True)
     with t2:
-        # Linha do tempo regulatória (simulada)
         marcos = [
             ("2025-02-15", "ANTT – tabela mínima frete (revisão)"),
             ("2025-03-30", "ABOL – guia ESG operadores logísticos"),
@@ -624,14 +594,120 @@ with tab_trends:
 
     with st.expander("Notas de fontes & próximos passos"):
         st.markdown("""
-- Estrutura de temas, BUs e concorrentes baseada na proposta da BC (#9794).
+- Estrutura de temas, BUs e concorrentes baseada na proposta da Glovis (#9794).
 - Para produção real: integrar fontes como ANFAVEA, ABOL, FENABRAVE, ABLA, IBGE, OICA, relatórios de RI (Tegma/JSL/CEVA), Comprasnet/SICAF e mídia setorial.
 - Recomenda-se: Desk + Quali (stakeholders) → Quant (validação) → refresh trimestral no Atlas.
         """)
+
+# =============================================================================
+# AI – Q&A SIMULADO (RAG MOCK)
+# =============================================================================
+with tab_ai:
+    st.subheader("AI – Pergunte ao Atlas (mock)")
+    st.caption("Gera respostas a partir dos dados atuais deste app (share, sizing, preços/SLAs, diferenciais, cobertura, eventos e inventário).")
+
+    # Filtros locais (opcionais) para contexto das respostas
+    ai_c1, ai_c2 = st.columns((1,1))
+    with ai_c1:
+        bu_ai = st.selectbox("BU foco para responder", options=(bus_sel if bus_sel else BUS), index=0, key="ai_bu")
+    with ai_c2:
+        players_ai = st.multiselect("Players foco nas respostas", options=players_sel, default=players_sel, key="ai_players")
+
+    # Knowledge base simples a partir dos dataframes filtrados
+    def build_kb() -> List[Dict[str, str]]:
+        kb = []
+
+        # 1) Market share (mês mais recente) por BU e player
+        if not df_share_hist.empty:
+            lm = df_share_hist["mes"].max()
+            cur = (df_share_hist[(df_share_hist["mes"]==lm) & (df_share_hist["bu"]==bu_ai) & (df_share_hist["player"].isin(players_ai))]
+                   .groupby("player", as_index=False)["market_share"].mean())
+            for _, r in cur.iterrows():
+                kb.append({"tema":"share", "texto": f"No último mês, em {bu_ai}, o market share estimado de {r['player']} foi {r['market_share']:.1%}."})
+
+        # 2) Sizing (mês mais recente) para a BU
+        if not df_sizing_hist.empty:
+            lm2 = df_sizing_hist["mes"].max()
+            siz = df_sizing_hist[(df_sizing_hist["mes"]==lm2) & (df_sizing_hist["bu"]==bu_ai)]["tamanho_mercado"].mean()
+            if pd.notnull(siz):
+                kb.append({"tema":"sizing", "texto": f"O tamanho de mercado estimado em {bu_ai} no mês mais recente foi {siz:,.0f} (unidade simulada)."})
+
+        # 3) Pricing/SLA/Leadtime por player (BU)
+        prc = df_pricing[(df_pricing["bu"]==bu_ai) & (df_pricing["player"].isin(players_ai))]
+        for _, r in prc.iterrows():
+            kb.append({"tema":"precos", "texto": f"Em {bu_ai}, {r['player']} tem preço médio ~{r['preco_medio']:.0f} (índice {r['indice_preco']*100:.0f}%), SLA {r['sla_cumprimento']:.0%} e leadtime {r['leadtime_dias']:.1f}d."})
+
+        # 4) Diferenciais (média por player) – BU
+        dif = df_diffs[(df_diffs["bu"]==bu_ai) & (df_diffs["player"].isin(players_ai))]
+        if not dif.empty:
+            agg = dif.groupby("player")["score"].mean().reset_index()
+            for _, r in agg.iterrows():
+                kb.append({"tema":"diferenciais", "texto": f"Em {bu_ai}, a média de diferenciais de {r['player']} está em {r['score']:.0f}/100."})
+
+        # 5) Cobertura – UFs com presença (Bluecompany) na BU
+        cov_bu = df_cov[(df_cov["bu"]==bu_ai) & (df_cov["player"]==COMPANY)]
+        if not cov_bu.empty:
+            ufs = cov_bu.groupby("uf")["presenca"].max()
+            kb.append({"tema":"cobertura", "texto": f"Bluecompany tem presença em {int((ufs>0).sum())} UFs na BU {bu_ai}."})
+
+        # 6) Eventos recentes
+        ev_last = df_events[df_events["bu"]==bu_ai].sort_values("data", ascending=False).head(8)
+        for _, r in ev_last.iterrows():
+            kb.append({"tema":"eventos", "texto": f"{r['data'].strftime('%d/%m')}: {r['tipo']} de {r['player']} em {bu_ai} (sev. {r['severidade']})."})
+
+        # 7) Inventário
+        docs = data["docs"].sort_values("data", ascending=False).head(5)
+        for _, r in docs.iterrows():
+            kb.append({"tema":"docs", "texto": f"{r['data'].date()}: {r['titulo']} [{r['aba']}/{r['tipo']}]."})
+        return kb
+
+    KB = build_kb()
+
+    # UI de exemplos + busca simples
+    ex_cols = st.columns(5)
+    examples = [
+        f"Qual o share da {COMPANY} em {bu_ai}?",
+        f"Como está o preço e SLA por player em {bu_ai}?",
+        f"Eventos recentes dos concorrentes em {bu_ai}?",
+        f"Tamanho de mercado atual de {bu_ai}?",
+        "Quais docs mais recentes do inventário?"
+    ]
+    for i, ex in enumerate(examples):
+        if ex_cols[i].button(ex, use_container_width=True):
+            st.session_state["atlas_q"] = ex
+
+    q = st.text_input("Pergunte ao Atlas", value=st.session_state.get("atlas_q", ""))
+    ask = st.button("Responder", type="primary")
+
+    def simple_search(query: str, kb: List[Dict[str, str]], topk: int = 6) -> List[str]:
+        terms = set([t.lower() for t in query.split()])
+        scores = []
+        for chunk in kb:
+            text = chunk["texto"].lower()
+            score = sum(1 for t in terms if t in text)
+            scores.append((score, chunk["texto"]))
+        scores.sort(key=lambda x: x[0], reverse=True)
+        return [t for score, t in scores[:topk] if score > 0]
+
+    if not q:
+        st.info("Dica: clique em um exemplo acima ou digite uma pergunta sobre market share, preços/SLAs, eventos, cobertura ou docs.")
+    elif ask:
+        resps = simple_search(q, KB)
+        if not resps:
+            st.warning("Não encontrei uma resposta direta. Tente reformular, ou consulte as abas acima.")
+        else:
+            st.success("Respostas encontradas:")
+            for r in resps:
+                st.markdown(f"- {r}")
+
+    st.divider()
+    st.markdown("### Central de Insights (inventário)")
+    filtro_aba_ai = st.selectbox("Filtrar por aba (docs)", options=["Todas"] + sorted(data["docs"]["aba"].unique().tolist()), key="ai_docs_aba")
+    docs_ai = data["docs"] if filtro_aba_ai=="Todas" else data["docs"][data["docs"]["aba"]==filtro_aba_ai]
+    st.dataframe(docs_ai.sort_values("data", ascending=False), use_container_width=True, height=220)
 
 # =============================================================================
 # RODAPÉ
 # =============================================================================
 st.divider()
 st.write(":grey[Protótipo conceitual • Okiar • Dados simulados para apresentação • Versão v1]")
-
