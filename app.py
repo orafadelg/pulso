@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Atlas – Bluecompany (Glovis) • Streamlit Prototype v1 (Okiar)
+Atlas – Bluecompany (BC v1) • Streamlit Prototype v1 (Okiar)
 Como rodar:
     streamlit run app.py
 Observações:
 - Dados 100% simulados (mock). Estrutura pronta p/ plugar dados reais depois.
-- BUs e concorrentes baseados na proposta da Glovis (#9794).
+- BUs e concorrentes baseados na proposta da BC v1 (#9794).
 - Abas: Overview, Market (Share & Sizing), Concorrência, Tendências, AI.
 """
 
@@ -34,7 +34,7 @@ import streamlit as st
 # CONFIGURAÇÃO GERAL
 # =============================================================================
 st.set_page_config(
-    page_title="Atlas – Bluecompany (Glovis)",
+    page_title="Atlas – Bluecompany (BC v1)",
     page_icon="🚚",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -96,7 +96,7 @@ SEED = 123
 random.seed(SEED)
 np.random.seed(SEED)
 
-COMPANY = "Bluecompany"  # codinome p/ Glovis neste app
+COMPANY = "Bluecompany"  # codinome p/ BC v1 neste app
 # Concorrentes relacionados
 COMPETITORS = ["Tegma", "JSL", "CEVA", "Autoport", "Transauto"]
 PLAYERS = [COMPANY] + COMPETITORS
@@ -249,7 +249,7 @@ def gen_docs_inventory() -> pd.DataFrame:
         ("Desk – Concorrência (Tegma/JSL/CEVA)", "Concorrência", "PDF", "2025-07-29"),
         ("Relatório – Sizing por BU (Q2)", "Market", "XLSX", "2025-08-05"),
         ("Quali – Roteiro Stakeholders BU Pátios", "Concorrência", "DOCX", "2025-08-01"),
-        ("Proposta #9794 – Glovis (Jun/25)", "Overview", "PDF", "2025-06-30"),
+        ("Proposta #9794 – BC v1 (Jun/25)", "Overview", "PDF", "2025-06-30"),
         ("Radar – Tendências Logísticas (Jul)", "Tendências", "PDF", "2025-07-31"),
     ]
     docs = [{"titulo": t, "aba": aba, "tipo": ext, "data": pd.to_datetime(dt)} for t, aba, ext, dt in bases]
@@ -370,7 +370,7 @@ df_events = ensure_datetime(df_events, "data")
 # =============================================================================
 # HEADER
 # =============================================================================
-st.title("Atlas – Bluecompany (Glovis)")
+st.title("Atlas – Bluecompany (BC v1)")
 st.caption("War Room de Inteligência: visão integrada de Share & Sizing, Concorrência, Tendências e AI • Dados simulados")
 
 # =============================================================================
@@ -594,7 +594,7 @@ with tab_trends:
 
     with st.expander("Notas de fontes & próximos passos"):
         st.markdown("""
-- Estrutura de temas, BUs e concorrentes baseada na proposta da Glovis (#9794).
+- Estrutura de temas, BUs e concorrentes baseada na proposta da BC v1 (#9794).
 - Para produção real: integrar fontes como ANFAVEA, ABOL, FENABRAVE, ABLA, IBGE, OICA, relatórios de RI (Tegma/JSL/CEVA), Comprasnet/SICAF e mídia setorial.
 - Recomenda-se: Desk + Quali (stakeholders) → Quant (validação) → refresh trimestral no Atlas.
         """)
